@@ -6,7 +6,7 @@ import express, { response } from "express";
 import * as dotenv from "dotenv";
 import bcrypt from "bcrypt";
 import { ServerApiVersion } from "mongodb";
-
+import jwt from "jsonwebtoken";
 
 dotenv.config();
 
@@ -49,59 +49,7 @@ app.get("/", function (request, response) {
 });
 
 app.post("/signin", async (request, response) => {
-  const { email, password, login_location } = request.body;
-
-  // Function to mark attendance
-  async function markAttendance(email, loginLocation) {
-    const usersCollection = client.db("LT").collection("Users");
-
-    try {
-      const user = await usersCollection.findOne({ email });
-      if (!user) {
-        console.error("User not found");
-        return;
-      }
-
-      const date = new Date();
-      const loginTime = date.toLocaleTimeString(undefined, {
-        timeZone: "Asia/Kolkata",
-      });
-      const loginDay = date.toLocaleDateString(undefined, {
-        timeZone: "Asia/Kolkata",
-      });
-
-      const userAttendance = await usersCollection.findOne({
-        email,
-        "attendance.loginDay": loginDay,
-      });
-
-      if (!userAttendance) {
-        const newAttendance = {
-          loginDay,
-          loginTime,
-          loginLocation,
-          logoutTime: "yet to be logged out",
-          breaks: [],
-        };
-
-        await usersCollection.updateOne(
-          { email },
-          { $push: { attendance: newAttendance } }
-        );
-
-        response
-          .status(200)
-          .send({ msg: "Attendance marked successfully for user:", email });
-      } else {
-        response
-          .status(200)
-          .send({ msg: "Already an active sesion running", email });
-      }
-    } catch (error) {
-      console.error("Error marking attendance:", error);
-    }
-  }
-
+  const { email, password, login_location, loginDay, loginTime, login } = request.body;
   try {
     const userdb = await client.db("LT").collection("Users").findOne({ email });
 
@@ -111,14 +59,65 @@ app.post("/signin", async (request, response) => {
       if (isSame) {
         const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: "1h" });
 
-        await markAttendance(email, login_location);
+        //mark atttendence here
+        const usersCollection = client.db("LT").collection("Users");
 
-        response.status(200).send({
-          msg: "Logged in",
-          name: userdb.name,
-          role: userdb.role,
-          token,
-        });
+        try {
+          const user = await usersCollection.findOne({ email });
+          if (!user) {
+            console.error("User not found");
+            return;
+          }
+
+          const date = new Date();
+          const loginTime = date.toLocaleTimeString(undefined, {
+            timeZone: "Asia/Kolkata",
+          });
+          const loginDay = date.toLocaleDateString(undefined, {
+            timeZone: "Asia/Kolkata",
+          });
+
+          const userAttendance = await usersCollection.findOne({
+            email,
+            "attendance.loginDay": loginDay,
+          });
+
+          if (!userAttendance) {
+            const newAttendance = {
+              loginDay,
+              loginTime,
+              login,
+              login_location,
+              logoutTime: "yet to be logged out",
+              logoutDay: "yet to be logged out",
+              logout: '',              
+              breaks: [],
+            };
+
+            await usersCollection.updateOne(
+              { email },
+              { $push: { attendance: newAttendance } }
+            );
+
+            response
+              .status(200)
+              .send({
+                msg: "Logged in",
+                name: userdb.name,
+                role: userdb.role,
+                loginDay,
+                loginTime,
+                token,
+                email,
+              });
+          } else {
+            response
+              .status(200)
+              .send({ msg: "Cannot login more than once per day", email });
+          }
+        } catch (error) {
+          console.error("Error marking attendance:", error);
+        }      
       } else {
         response.status(400).send({ msg: "Invalid credentials" });
       }
@@ -132,12 +131,17 @@ app.post("/signin", async (request, response) => {
 });
 
 app.post("/signout", async function (request, response) {
-  let { email } = request.body;
+  let { email, login } = request.body;
+
+  console.log(login)
 
   const usersCollection = client.db("LT").collection("Users");
 
+  
   try {
-    let user = await usersCollection.findOne({ email: email });
+
+    let user = await usersCollection.findOne({ email,  "attendance.login": login});
+
 
     if (user) {
       const date = new Date();
@@ -152,28 +156,31 @@ app.post("/signout", async function (request, response) {
       const attendance = user.attendance;
       if (attendance && attendance.length > 0) {
         const dayAttendance = attendance[attendance.length - 1];
+        dayAttendance.logout = date;
         dayAttendance.logoutTime = logoutTime;
         dayAttendance.logoutDay = logoutDay;
 
-        await usersCollection.updateOne(
-          { email, "attendance.date": dayAttendance.loginDay },
-          { $set: { "attendance.$": dayAttendance } }
-        );
+        const put = await usersCollection.updateOne(
+          { email, "attendance.login": login },
+          { $set: { "attendance.$.logout": date, "attendance.$.logoutTime": logoutTime, "attendance.$.logoutDay": logoutDay} }
+        );    
+
+         console.log(put) 
 
         response
           .status(200)
-          .send({ message: "Logout time recorded successfully" });
+          .send({ msg: "Logout time recorded successfully" });
       } else {
         response
           .status(400)
-          .send({ message: "No attendance record found for today" });
+          .send({ msg: "No attendance record found for today" });
       }
     } else {
-      return response.status(404).send({ message: "User not found" });
+      return response.status(404).send({ msg: "User not found" });
     }
   } catch (error) {
     console.error("Error updating logout time:", error);
-    response.status(500).send({ message: "Failed to update logout time" });
+    response.status(500).send({ msg: "Failed to update logout time" });
   }
 });
 
@@ -253,6 +260,12 @@ const updateUserProfile = async (req, res) => {
 
 app.patch("/update-profile", updateUserProfile);
 
+//get user by id
+
+app.get("/user")
+
+
+
 app.get("/allenquirys", async (request, response) => {
   try {
     const enquirydb = await client
@@ -269,7 +282,7 @@ app.get("/allenquirys", async (request, response) => {
     console.error("Error during enqyiry search:", error);
     response.status(500).send({ msg: "Internal server error" });
   }
-});
+}); 
 
 app.get("/allusers", async (request, response) => {
   try {
