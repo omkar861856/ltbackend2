@@ -7,8 +7,6 @@ import * as dotenv from "dotenv";
 import bcrypt from "bcrypt";
 import { ServerApiVersion } from "mongodb";
 import jwt from "jsonwebtoken";
-import {WebSocketServer} from 'ws'
-import WebSocket from "ws";
 
 import nodemailer from 'nodemailer';
 import pug from 'pug';
@@ -30,29 +28,6 @@ app.use(cookieparser());
 const PORT = process.env.PORT;
 const JWT_SECRET = process.env.JWT_SECRET;
 const MONGO_URL = process.env.MONGO_URL;
-
-
-
-// ws server if normally
-
-
-const wss = new WebSocketServer({ port: 8080 });
-
-if(wss){
-  console.log(`Socket running in ✨ ${wss.options.port}`)
-}
-
-// If you are using WebSockets, you
-//  must use Serverless Functions to
-//  manage the WebSocket connections.
-
-wss.on('connection', ws => {
-    console.log('Client connected');
-
-    ws.on('close', () => {
-        console.log('Client disconnected');
-    });
-});  
 
 
 
