@@ -31,13 +31,20 @@ const PORT = process.env.PORT;
 const JWT_SECRET = process.env.JWT_SECRET;
 const MONGO_URL = process.env.MONGO_URL;
 
-//setting up a web socket server
+
+
+// ws server if normally
+
 
 const wss = new WebSocketServer({ port: 8080 });
 
 if(wss){
   console.log(`Socket running in ✨ ${wss.options.port}`)
 }
+
+// If you are using WebSockets, you
+//  must use Serverless Functions to
+//  manage the WebSocket connections.
 
 wss.on('connection', ws => {
     console.log('Client connected');
@@ -69,6 +76,8 @@ async function MongoConnect() {
 }
 
 const client = await MongoConnect();
+
+
 
 app.get("/", function (request, response) {
   response.send("🙋‍♂️ Welcome to LT Backend");
@@ -357,9 +366,6 @@ const updateUserProfile = async (req, res) => {
 app.patch("/update-profile", updateUserProfile);
 
 
-
-
-
 app.get("/allenquirys", async (request, response) => {
   try {
     const enquirydb = await client
@@ -420,30 +426,6 @@ app.post("/editor/:id", async function (request, response) {
 //watch changes in db for new enquiry
 
 // Use MongoDB Change Streams to watch for changes in the collection
-(() => {
-  
-  const db = client.db('LT');
-  const collection = db.collection('Enquireys');
-
-  const changeStream = collection.watch();
-
-  changeStream.on('change', change => {
-      console.log('Change detected:', change);
-
-      if (change.operationType === 'insert' || change.operationType === 'update') {
-          const updatedDocument = change.fullDocument;
-          console.log('Updated document:', updatedDocument);
-
-          // Broadcast the updated document to all connected clients
-          wss.clients.forEach(client => {
-              if (client.readyState === WebSocket.OPEN) {
-                  client.send(JSON.stringify(updatedDocument));
-              } 
-          });
-      }
-  });
-})()
-
 
 // post enquiry
 
