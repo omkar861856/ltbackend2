@@ -7,6 +7,14 @@ import * as dotenv from "dotenv";
 import bcrypt from "bcrypt";
 import { ServerApiVersion } from "mongodb";
 import jwt from "jsonwebtoken";
+import {WebSocketServer} from 'ws'
+import WebSocket from "ws";
+
+import nodemailer from 'nodemailer';
+import pug from 'pug';
+import path from 'path';
+
+
 
 dotenv.config();
 
@@ -23,6 +31,24 @@ const PORT = process.env.PORT;
 const JWT_SECRET = process.env.JWT_SECRET;
 const MONGO_URL = process.env.MONGO_URL;
 
+//setting up a web socket server
+
+const wss = new WebSocketServer({ port: 8080 });
+
+if(wss){
+  console.log(`Socket running in ✨ ${wss.options.port}`)
+}
+
+wss.on('connection', ws => {
+    console.log('Client connected');
+
+    ws.on('close', () => {
+        console.log('Client disconnected');
+    });
+});  
+
+
+
 async function hashedPassword(password) {
   const NO_OF_ROUNDS = 10;
   const salt = await bcrypt.genSalt(NO_OF_ROUNDS);
@@ -38,7 +64,7 @@ async function MongoConnect() {
       deprecationErrors: true,
     },
   }).connect();
-  console.log("Mongo Connected");
+  console.log("Mongo Connected ✨✨");
   return client;
 }
 
@@ -221,6 +247,76 @@ app.post("/signup", async function (request, response) {
   }
 });
 
+//service for sending emails using Nodemailer and Pug.
+
+
+const transporter = nodemailer.createTransport({
+  host: "live.smtp.mailtrap.io",
+  port: 587,
+  auth: {
+    user: "api", 
+    pass: "ceb9400d790bf0179fc5a80dbad444d0"
+  },
+  debug: true, // show debug output
+  logger: true // log information in console
+});
+
+const sendVerificationEmail = async (to, email_verificationCode) => {
+  const templatePath = path.join(process.cwd(), 'email_verification.pug');
+  const html = pug.renderFile(templatePath, { email_verificationCode });
+
+  const mailOptions = {
+    from: "mailtrap@demomailtrap.com",
+    to:to,
+    subject: 'Email Verification',
+    html: html,
+  }; 
+ 
+  try { 
+    await transporter.sendMail(mailOptions);
+    console.log('Verification email sent successfully');
+  } catch (error) {
+    console.error('Error sending email:', error);
+  }
+};
+
+
+
+app.post('/send-verification-code', async (req, res) => {
+  const { email } = req.body;
+  const email_verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+  try {
+    await client.db('LT').collection('Users').updateOne(
+      { email: email },
+      { $set: { email_verificationCode: email_verificationCode } },
+      { upsert: true }
+    );
+
+    await sendVerificationEmail(email, email_verificationCode);
+    res.status(200).send('Verification code sent');
+  } catch (error) {
+    res.status(500).send('Error sending verification code');
+  }
+});
+
+app.post('/verify-code', async (req, res) => {
+  const { email, email_verificationCode } = req.body;
+
+  try {
+    const user = await client.db('LT').collection('Users').findOne({ email: email });
+
+    if (user && user.email_verificationCode === email_verificationCode) {
+      res.status(200).send('Email verified successfully');
+    } else {
+      res.status(400).send('Invalid verification code');
+    }
+  } catch (error) {
+    res.status(500).send('Error verifying code');
+  }
+});
+
+
 //update
 
 const updateUserProfile = async (req, res) => {
@@ -260,9 +356,7 @@ const updateUserProfile = async (req, res) => {
 
 app.patch("/update-profile", updateUserProfile);
 
-//get user by id
 
-app.get("/user")
 
 
 
@@ -322,4 +416,50 @@ app.post("/editor/:id", async function (request, response) {
   }
 });
 
-app.listen(PORT, () => console.log(`The server started in: ${PORT} ✨✨`));
+
+//watch changes in db for new enquiry
+
+// Use MongoDB Change Streams to watch for changes in the collection
+(() => {
+  
+  const db = client.db('LT');
+  const collection = db.collection('Enquireys');
+
+  const changeStream = collection.watch();
+
+  changeStream.on('change', change => {
+      console.log('Change detected:', change);
+
+      if (change.operationType === 'insert' || change.operationType === 'update') {
+          const updatedDocument = change.fullDocument;
+          console.log('Updated document:', updatedDocument);
+
+          // Broadcast the updated document to all connected clients
+          wss.clients.forEach(client => {
+              if (client.readyState === WebSocket.OPEN) {
+                  client.send(JSON.stringify(updatedDocument));
+              } 
+          });
+      }
+  });
+})()
+
+
+// post enquiry
+
+app.post("/enquiry", async function (request, response) {
+  let data = request.body;
+  let insert_data = await client
+    .db("LT")
+    .collection("Enquireys")
+    .insertOne(data);
+  if (insert_data) {
+    response.status(200).send({ msg: "Enquirey registered" });
+  } else {
+    response.status(400).send({ msg: "Some error happened" });
+  }
+});
+
+
+
+app.listen(PORT, () => console.log(`The server started in: ${PORT} ✨✨✨`));
