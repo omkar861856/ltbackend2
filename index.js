@@ -345,7 +345,7 @@ app.get("/allenquirys", async (request, response) => {
   try {
     const enquirydb = await client
       .db("LT")
-      .collection("Enquireys")
+      .collection("Enquirys")
       .find()
       .toArray();
     if (enquirydb) {
@@ -398,18 +398,67 @@ app.post("/editor/:id", async function (request, response) {
 });
 
 
-//watch changes in db for new enquiry
+// send touch history to db
 
-// Use MongoDB Change Streams to watch for changes in the collection
+app.post("/enquiry/touch", async function (request, response) {
+  let {email, type, comment,contact, touchedBy} = request.body;
+  let insert_data = await client
+    .db("LT")
+    .collection("Enquirys")
+    .updateMany({
+     email
+    },{
+      $push: {
+        touchHistory: {
+          type,
+          comment,
+          time: new Date(),
+          touchedBy: touchedBy || 'user'
+        }
+      }
+    });    
+    if (insert_data.acknowledged===true) {
+      const updatedUsers = await client.db('LT').collection('Enquirys').findOne({email});
+      response.status(204).send({data:updatedUsers});
+    } else {
+      response.status(404).send({ message: 'No enquirys found' });
+    }
+});
+
+// get touchHistory of a enquired user
+
+// GET route to fetch touchHistory by email
+app.get('/enquiry/touch-history', async (req, res) => {
+  const {email, contact} = req.query
+
+  try {
+    const user = await client.db('LT').collection('Enquirys').findOne({email});
+
+    if (!user) {
+      return res.status(404).send({ message: 'User not found' });
+    }
+
+    // Extract touchHistory from user document
+    const touchHistory = user.touchHistory;
+
+    res.status(200).send({history:touchHistory});
+  } catch (error) {
+    console.error('Error fetching touchHistory:', error);
+    res.status(500).send({ message: 'Internal server error' });
+  }
+});
+
+
 
 // post enquiry
 
 app.post("/enquiry", async function (request, response) {
   let data = request.body;
+  let enquiryData = [...data,touchHistory,touchReminder]
   let insert_data = await client
     .db("LT")
-    .collection("Enquireys")
-    .insertOne(data);
+    .collection("Enquirys")
+    .insertOne(enquiryData);
   if (insert_data) {
     response.status(200).send({ msg: "Enquirey registered" });
   } else {
