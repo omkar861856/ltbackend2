@@ -19,17 +19,17 @@ dotenv.config();
 const app = express();
 
 // CORS configuration
-const allowedOrigins = ['https://ltenquirey.netlify.app', 'https://learnmoretechnologies.netlify.app'];
-
-const corsOptions = {
+let whitelist =['https://ltenquirey.netlify.app', 'https://learnmoretechnologies.netlify.app'];
+let corsOptions = {
   origin: function (origin, callback) {
-    if (allowedOrigins.includes(origin) || !origin) {
-      callback(null, true);
+    if (whitelist.indexOf(origin) !== -1) {
+      callback(null, true)
     } else {
-      callback(new Error('Not allowed by CORS'));
+      callback(new Error('Not allowed by CORS'))
     }
   }
-};
+}
+ 
 
 app.use(cors());
 
@@ -199,7 +199,7 @@ app.post("/signout", cors(corsOptions), async function (request, response) {
           .status(400)
           .send({ msg: "No attendance record found for today" });
       }
-    } else {
+    } else { 
       return response.status(404).send({ msg: "User not found" });
     }
   } catch (error) {
