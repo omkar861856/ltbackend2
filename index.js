@@ -460,7 +460,7 @@ app.post("/enquiry", async function (request, response) {
     .collection("Enquirys")
     .insertOne(enquiryData);
   if (insert_data) {
-    response.status(200).send({ msg: "Enquirey registered" });
+    response.status(200).send({ msg: "Enquiry registered" });
   } else {
     response.status(400).send({ msg: "Some error happened" });
   }
