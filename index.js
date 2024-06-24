@@ -18,11 +18,8 @@ dotenv.config();
 
 const app = express();
 
-// Define the origin you want to allow (your frontend URL)
 const allowedOrigins = ['https://ltenquirey.netlify.app'];
 
-
-// CORS middleware options
 const corsOptions = {
   origin: function (origin, callback) {
     if (allowedOrigins.includes(origin) || !origin) {
@@ -33,9 +30,7 @@ const corsOptions = {
   }
 };
 
-// Use CORS middleware
 app.use(cors(corsOptions));
-app.options('/enquiry', cors(corsOptions));
 app.use(express.json());
 
 app.use(bodyparser.urlencoded({ extended: false }));
