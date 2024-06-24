@@ -18,7 +18,8 @@ dotenv.config();
 
 const app = express();
 
-const allowedOrigins = ['https://ltenquirey.netlify.app'];
+// CORS configuration
+const allowedOrigins = ['https://ltenquirey.netlify.app', 'https://learnmoretechnologies.netlify.app'];
 
 const corsOptions = {
   origin: function (origin, callback) {
@@ -30,7 +31,8 @@ const corsOptions = {
   }
 };
 
-app.use(cors(corsOptions));
+app.use(cors());
+
 app.use(express.json());
 
 app.use(bodyparser.urlencoded({ extended: false }));
@@ -50,7 +52,7 @@ async function hashedPassword(password) {
   return hashedPassword;
 }
 
-async function MongoConnect() {
+ async function MongoConnect() {
   const client = await new MongoClient(MONGO_URL, {
     serverApi: {
       version: ServerApiVersion.v1,
@@ -70,7 +72,7 @@ app.get("/", function (request, response) {
   response.send("🙋‍♂️ Welcome to LT Backend");
 });
 
-app.post("/signin", async (request, response) => {
+app.post("/signin", cors(corsOptions), async (request, response) => {
   const { email, password, login_location, loginDay, loginTime, login } = request.body;
   try {
     const userdb = await client.db("LT").collection("Users").findOne({ email });
@@ -152,7 +154,7 @@ app.post("/signin", async (request, response) => {
   }
 });
 
-app.post("/signout", async function (request, response) {
+app.post("/signout", cors(corsOptions), async function (request, response) {
   let { email, login } = request.body;
 
   console.log(login)
@@ -207,7 +209,7 @@ app.post("/signout", async function (request, response) {
 });
 
 // signin signup and signout user
-app.post("/signup", async function (request, response) {
+app.post("/signup", cors(corsOptions), async function (request, response) {
   let { name, email, password, role_radio } = request.body;
 
   let userdb = await client
@@ -257,7 +259,7 @@ const transporter = nodemailer.createTransport({
   logger: true // log information in console
 });
 
-const sendVerificationEmail = async (to, email_verificationCode) => {
+const sendVerificationEmail =  async (to, email_verificationCode) => {
   const templatePath = path.join(process.cwd(), 'email_verification.pug');
   const html = pug.renderFile(templatePath, { email_verificationCode });
 
@@ -278,7 +280,7 @@ const sendVerificationEmail = async (to, email_verificationCode) => {
 
 
 
-app.post('/send-verification-code', async (req, res) => {
+app.post('/send-verification-code', cors(corsOptions), async (req, res) => {
   const { email } = req.body;
   const email_verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -296,7 +298,7 @@ app.post('/send-verification-code', async (req, res) => {
   }
 });
 
-app.post('/verify-code', async (req, res) => {
+app.post('/verify-code', cors(corsOptions), async (req, res) => {
   const { email, email_verificationCode } = req.body;
 
   try {
@@ -350,11 +352,11 @@ const updateUserProfile = async (req, res) => {
   }
 };
 
-app.patch("/update-profile", updateUserProfile);
+app.patch("/update-profile",cors(corsOptions), updateUserProfile);
 
 // post enquiry
 
-app.post("/enquiry", async function (request, response) {
+app.post("/enquiry", cors(corsOptions), async function (request, response) {
   let data = request.body;
   let enquiryData = [...data,touchHistory,touchReminder]
   let insert_data = await client
@@ -369,7 +371,7 @@ app.post("/enquiry", async function (request, response) {
 });
 
 
-app.get("/allenquirys", async (request, response) => {
+app.get("/allenquirys", cors(corsOptions), async (request, response) => {
   try {
     const enquirydb = await client
       .db("LT")
@@ -387,7 +389,7 @@ app.get("/allenquirys", async (request, response) => {
   }
 }); 
 
-app.get("/allusers", async (request, response) => {
+app.get("/allusers", cors(corsOptions), async (request, response) => {
   try {
     const usersdb = await client.db("LT").collection("Users").find().toArray();
     if (usersdb) {
@@ -403,7 +405,7 @@ app.get("/allusers", async (request, response) => {
 
 // for blog editor
 
-app.post("/editor/:id", async function (request, response) {
+app.post("/editor/:id", cors(corsOptions), async function (request, response) {
   try {
     const id = request.params.id;
     const content = request.content;
@@ -428,7 +430,7 @@ app.post("/editor/:id", async function (request, response) {
 
 // send touch history to db
 
-app.post("/enquiry/touch", async function (request, response) {
+app.post("/enquiry/touch", cors(corsOptions), async function (request, response) {
   let {email, type, comment,contact, touchedBy} = request.body;
   let insert_data = await client
     .db("LT")
@@ -456,7 +458,7 @@ app.post("/enquiry/touch", async function (request, response) {
 // get touchHistory of a enquired user
 
 // GET route to fetch touchHistory by email
-app.get('/enquiry/touch-history', async (req, res) => {
+app.get('/enquiry/touch-history', cors(corsOptions), async (req, res) => {
   const {email, contact} = req.query
 
   try {
