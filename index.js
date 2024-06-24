@@ -18,7 +18,24 @@ dotenv.config();
 
 const app = express();
 
-app.use(cors());
+// Define the origin you want to allow (your frontend URL)
+const allowedOrigins = ['https://ltenquirey.netlify.app'];
+
+
+// CORS middleware options
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (allowedOrigins.includes(origin) || !origin) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  }
+};
+
+// Use CORS middleware
+app.use(cors(corsOptions));
+app.options('/enquiry', cors(corsOptions));
 app.use(express.json());
 
 app.use(bodyparser.urlencoded({ extended: false }));
@@ -340,6 +357,22 @@ const updateUserProfile = async (req, res) => {
 
 app.patch("/update-profile", updateUserProfile);
 
+// post enquiry
+
+app.post("/enquiry", async function (request, response) {
+  let data = request.body;
+  let enquiryData = [...data,touchHistory,touchReminder]
+  let insert_data = await client
+    .db("LT")
+    .collection("Enquirys")
+    .insertOne(enquiryData);
+  if (insert_data) {
+    response.status(200).send({ msg: "Enquiry registered" });
+  } else {
+    response.status(400).send({ msg: "Some error happened" });
+  }
+});
+
 
 app.get("/allenquirys", async (request, response) => {
   try {
@@ -450,21 +483,6 @@ app.get('/enquiry/touch-history', async (req, res) => {
 
 
 
-// post enquiry
-
-app.post("/enquiry", async function (request, response) {
-  let data = request.body;
-  let enquiryData = [...data,touchHistory,touchReminder]
-  let insert_data = await client
-    .db("LT")
-    .collection("Enquirys")
-    .insertOne(enquiryData);
-  if (insert_data) {
-    response.status(200).send({ msg: "Enquiry registered" });
-  } else {
-    response.status(400).send({ msg: "Some error happened" });
-  }
-});
 
 
 
