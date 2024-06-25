@@ -19,7 +19,7 @@ dotenv.config();
 const app = express();
 
 // CORS configuration
-let whitelist =['https://ltenquirey.netlify.app', 'https://learnmoretechnologies.netlify.app'];
+let whitelist =['https://ltenquirey.netlify.app', 'https://learnmoretechnologies.netlify.app', "http://localhost:3030"];
 let corsOptions = {
   origin: function (origin, callback) {
     if (whitelist.indexOf(origin) !== -1) {
@@ -29,7 +29,7 @@ let corsOptions = {
     }
   }
 }
- 
+  
 
 app.use(cors(corsOptions));
 
@@ -364,7 +364,9 @@ app.patch("/update-profile",cors(corsOptions), updateUserProfile);
 
 app.post("/enquiry", async function (request, response) {
   let data = request.body;
-  let enquiryData = [...data,touchHistory,touchReminder]
+  let touchHistory = [];
+  let touchReminder = [];
+  let enquiryData = {...data, touchHistory, touchReminder}
   let insert_data = await client
     .db("LT")
     .collection("Enquirys")
