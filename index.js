@@ -31,7 +31,7 @@ let corsOptions = {
 }
  
 
-app.use(cors());
+app.use(cors(corsOptions));
 
 app.use(express.json());
 
@@ -66,13 +66,19 @@ async function hashedPassword(password) {
 
 const client = await MongoConnect();
 
+//testing cors
+
+app.get('/cors', (req, res) => {
+  res.send('CORS policy is working!');
+});
+
 
 
 app.get("/", function (request, response) {
   response.send("🙋‍♂️ Welcome to LT Backend");
 });
 
-app.post("/signin", cors(corsOptions), async (request, response) => {
+app.post("/signin", async (request, response) => {
   const { email, password, login_location, loginDay, loginTime, login } = request.body;
   try {
     const userdb = await client.db("LT").collection("Users").findOne({ email });
@@ -154,7 +160,7 @@ app.post("/signin", cors(corsOptions), async (request, response) => {
   }
 });
 
-app.post("/signout", cors(corsOptions), async function (request, response) {
+app.post("/signout", async function (request, response) {
   let { email, login } = request.body;
 
   console.log(login)
@@ -209,7 +215,7 @@ app.post("/signout", cors(corsOptions), async function (request, response) {
 });
 
 // signin signup and signout user
-app.post("/signup", cors(corsOptions), async function (request, response) {
+app.post("/signup", async function (request, response) {
   let { name, email, password, role_radio } = request.body;
 
   let userdb = await client
@@ -280,7 +286,7 @@ const sendVerificationEmail =  async (to, email_verificationCode) => {
 
 
 
-app.post('/send-verification-code', cors(corsOptions), async (req, res) => {
+app.post('/send-verification-code', async (req, res) => {
   const { email } = req.body;
   const email_verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -298,7 +304,7 @@ app.post('/send-verification-code', cors(corsOptions), async (req, res) => {
   }
 });
 
-app.post('/verify-code', cors(corsOptions), async (req, res) => {
+app.post('/verify-code', async (req, res) => {
   const { email, email_verificationCode } = req.body;
 
   try {
@@ -356,7 +362,7 @@ app.patch("/update-profile",cors(corsOptions), updateUserProfile);
 
 // post enquiry
 
-app.post("/enquiry", cors(corsOptions), async function (request, response) {
+app.post("/enquiry", async function (request, response) {
   let data = request.body;
   let enquiryData = [...data,touchHistory,touchReminder]
   let insert_data = await client
@@ -371,7 +377,7 @@ app.post("/enquiry", cors(corsOptions), async function (request, response) {
 });
 
 
-app.get("/allenquirys", cors(corsOptions), async (request, response) => {
+app.get("/allenquirys", async (request, response) => {
   try {
     const enquirydb = await client
       .db("LT")
@@ -389,7 +395,7 @@ app.get("/allenquirys", cors(corsOptions), async (request, response) => {
   }
 }); 
 
-app.get("/allusers", cors(corsOptions), async (request, response) => {
+app.get("/allusers", async (request, response) => {
   try {
     const usersdb = await client.db("LT").collection("Users").find().toArray();
     if (usersdb) {
@@ -405,7 +411,7 @@ app.get("/allusers", cors(corsOptions), async (request, response) => {
 
 // for blog editor
 
-app.post("/editor/:id", cors(corsOptions), async function (request, response) {
+app.post("/editor/:id", async function (request, response) {
   try {
     const id = request.params.id;
     const content = request.content;
@@ -430,7 +436,7 @@ app.post("/editor/:id", cors(corsOptions), async function (request, response) {
 
 // send touch history to db
 
-app.post("/enquiry/touch", cors(corsOptions), async function (request, response) {
+app.post("/enquiry/touch", async function (request, response) {
   let {email, type, comment,contact, touchedBy} = request.body;
   let insert_data = await client
     .db("LT")
@@ -458,7 +464,7 @@ app.post("/enquiry/touch", cors(corsOptions), async function (request, response)
 // get touchHistory of a enquired user
 
 // GET route to fetch touchHistory by email
-app.get('/enquiry/touch-history', cors(corsOptions), async (req, res) => {
+app.get('/enquiry/touch-history', async (req, res) => {
   const {email, contact} = req.query
 
   try {
