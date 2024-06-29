@@ -137,6 +137,7 @@ app.post("/signin", async (request, response) => {
                 role: userdb.role,
                 loginDay,
                 loginTime,
+                photoURL:userdb.photoURL,
                 token,
                 email,
               });
@@ -230,6 +231,7 @@ app.post("/signup", async function (request, response) {
       name: name,
       email: email,
       photoURL: "",
+      createdAt: new Date(),
       createdAtDay: new Date().toLocaleDateString(undefined, {
         timeZone: "Asia/Kolkata",
       }),
@@ -323,42 +325,37 @@ app.post('/verify-code', async (req, res) => {
 
 //update
 
-const updateUserProfile = async (req, res) => {
+
+app.patch("/update-profile",cors(corsOptions), async (req, res) => {
   const { email, name, photoURL } = req.body;
-
-  if (!name && !photoURL) {
-    return res
-      .status(400)
-      .json({ message: "At least one field (name or photoUrl) are required" });
-  }
-
   try {
     const db = client.db("LT");
     const collection = db.collection("Users");
 
     const updateFields = {};
-    if (name) updateFields.name = name;
-    if (photoURL) updateFields.photoURL = photoURL;
-    console.log(updateFields);
+     updateFields.name = name;
+     updateFields.photoURL = photoURL;
+
+     console.log(updateFields)
 
     const result = await collection.updateOne(
       { email },
       { $set: updateFields }
     );
 
+    console.log(result);
+
     if (result.modifiedCount === 0) {
       return res
-        .status(404)
-        .json({ message: "User not found or no changes made" });
+        .status(200)
+        .send({ message: "No changes made" });
     }
 
-    res.json({ message: "User profile updated successfully" });
+    res.status(204).send({ message: "User profile updated successfully" });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).send({ message: err.message });
   }
-};
-
-app.patch("/update-profile",cors(corsOptions), updateUserProfile);
+});
 
 // post enquiry
 
@@ -401,7 +398,7 @@ app.get("/allusers", async (request, response) => {
   try {
     const usersdb = await client.db("LT").collection("Users").find().toArray();
     if (usersdb) {
-      response.status(200).send({ msg: "Users found", usersdb });
+      response.status(200).send({ msg: "Users found", users:usersdb });
     } else {
       response.status(400).send({ msg: "No user found" });
     }
