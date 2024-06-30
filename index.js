@@ -172,7 +172,7 @@ app.post("/signout", async function (request, response) {
   try {
 
     let user = await usersCollection.findOne({ email,  "attendance.login": login});
-
+ 
 
     if (user) {
       const date = new Date();
