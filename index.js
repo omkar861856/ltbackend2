@@ -1,491 +1,433 @@
 import { MongoClient } from "mongodb";
-import bodyparser from "body-parser";
+import express from "express";
+import bodyParser from "body-parser";
 import cors from "cors";
-import cookieparser from "cookie-parser";
-import express, { response } from "express";
-import * as dotenv from "dotenv";
+import cookieParser from "cookie-parser";
+import dotenv from "dotenv";
 import bcrypt from "bcrypt";
-import { ServerApiVersion } from "mongodb";
 import jwt from "jsonwebtoken";
-
-import nodemailer from 'nodemailer';
-import pug from 'pug';
-import path from 'path';
-
-
+import nodemailer from "nodemailer";
+import pug from "pug";
+import path from "path";
 
 dotenv.config();
 
 const app = express();
 
 // CORS configuration
-let whitelist =['https://ltenquirey.netlify.app', 'https://learnmoretechnologies.netlify.app', "http://localhost:3030"];
-let corsOptions = {
-  origin: function (origin, callback) {
-    if (whitelist.indexOf(origin) !== -1) {
-      callback(null, true)
+const whitelist = [
+  "https://ltenquiry.netlify.app",
+  "https://learnmoretechnologies.netlify.app",
+  "http://localhost:3030",
+];
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (whitelist.includes(origin)) {
+      callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'))
+      callback(new Error("Not allowed by CORS"));
     }
-  }
-}
-  
+  },
+};
 
 app.use(cors(corsOptions));
-
 app.use(express.json());
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
+app.use(cookieParser());
 
-app.use(bodyparser.urlencoded({ extended: false }));
-app.use(bodyparser.json());
-app.use(cookieparser());
+const { PORT, JWT_SECRET, MONGO_URL } = process.env;
 
-const PORT = process.env.PORT;
-const JWT_SECRET = process.env.JWT_SECRET;
-const MONGO_URL = process.env.MONGO_URL;
+// Utility functions
+const hashedPassword = async (password) => {
+  const salt = await bcrypt.genSalt(10);
+  return bcrypt.hash(password, salt);
+};
 
-
-
-async function hashedPassword(password) {
-  const NO_OF_ROUNDS = 10;
-  const salt = await bcrypt.genSalt(NO_OF_ROUNDS);
-  const hashedPassword = await bcrypt.hash(password, salt);
-  return hashedPassword;
-}
-
- async function MongoConnect() {
-  const client = await new MongoClient(MONGO_URL, {
+const MongoConnect = async () => {
+  const client = new MongoClient(MONGO_URL, {
     serverApi: {
-      version: ServerApiVersion.v1,
+      version: "1",
       strict: true,
       deprecationErrors: true,
     },
-  }).connect();
+  });
+  await client.connect();
   console.log("Mongo Connected ✨✨");
   return client;
-}
+};
 
 const client = await MongoConnect();
 
-//testing cors
-
-app.get('/cors', (req, res) => {
-  res.send('CORS policy is working!');
-});
-
-
-
-app.get("/", function (request, response) {
-  response.send("🙋‍♂️ Welcome to LT Backend");
-});
-
-app.post("/signin", async (request, response) => {
-  const { email, password, login_location, loginDay, loginTime, login } = request.body;
-  try {
-    const userdb = await client.db("LT").collection("Users").findOne({ email });
-
-    if (userdb) {
-      const isSame = await bcrypt.compare(password, userdb.password);
-
-      if (isSame) {
-        const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: "1h" });
-
-        //mark atttendence here
-        const usersCollection = client.db("LT").collection("Users");
-
-        try {
-          const user = await usersCollection.findOne({ email });
-          if (!user) {
-            console.error("User not found");
-            return;
-          }
-
-          const date = new Date();
-          const loginTime = date.toLocaleTimeString(undefined, {
-            timeZone: "Asia/Kolkata",
-          });
-          const loginDay = date.toLocaleDateString(undefined, {
-            timeZone: "Asia/Kolkata",
-          });
-
-          const userAttendance = await usersCollection.findOne({
-            email,
-            "attendance.loginDay": loginDay,
-          });
-
-          if (!userAttendance) {
-            const newAttendance = {
-              loginDay,
-              loginTime,
-              login,
-              login_location,
-              logoutTime: "yet to be logged out",
-              logoutDay: "yet to be logged out",
-              logout: '',              
-              breaks: [],
-            };
-
-            await usersCollection.updateOne(
-              { email },
-              { $push: { attendance: newAttendance } }
-            );
-
-            response
-              .status(200)
-              .send({
-                msg: "Logged in",
-                name: userdb.name,
-                role: userdb.role,
-                loginDay,
-                loginTime,
-                photoURL:userdb.photoURL,
-                token,
-                email,
-              });
-          } else {
-            response
-              .status(200)
-              .send({ msg: "Cannot login more than once per day", email });
-          }
-        } catch (error) {
-          console.error("Error marking attendance:", error);
-        }      
-      } else {
-        response.status(400).send({ msg: "Invalid credentials" });
-      }
-    } else {
-      response.status(400).send({ msg: "No user found" });
-    }
-  } catch (error) {
-    console.error("Error during signin:", error);
-    response.status(500).send({ msg: "Internal server error" });
-  }
-});
-
-app.post("/signout", async function (request, response) {
-  let { email, login } = request.body;
-
-  console.log(login)
-
-  const usersCollection = client.db("LT").collection("Users");
-
-  
-  try {
-
-    let user = await usersCollection.findOne({ email,  "attendance.login": login});
- 
-
-    if (user) {
-      const date = new Date();
-      const logoutTime = date.toLocaleTimeString(undefined, {
-        timeZone: "Asia/Kolkata",
-      });
-      const logoutDay = date.toLocaleDateString(undefined, {
-        timeZone: "Asia/Kolkata",
-      });
-
-      // Update the latest attendance record with logout time
-      const attendance = user.attendance;
-      if (attendance && attendance.length > 0) {
-        const dayAttendance = attendance[attendance.length - 1];
-        dayAttendance.logout = date;
-        dayAttendance.logoutTime = logoutTime;
-        dayAttendance.logoutDay = logoutDay;
-
-        const put = await usersCollection.updateOne(
-          { email, "attendance.login": login },
-          { $set: { "attendance.$.logout": date, "attendance.$.logoutTime": logoutTime, "attendance.$.logoutDay": logoutDay} }
-        );    
-
-         console.log(put) 
-
-        response
-          .status(200)
-          .send({ msg: "Logout time recorded successfully" });
-      } else {
-        response
-          .status(400)
-          .send({ msg: "No attendance record found for today" });
-      }
-    } else { 
-      return response.status(404).send({ msg: "User not found" });
-    }
-  } catch (error) {
-    console.error("Error updating logout time:", error);
-    response.status(500).send({ msg: "Failed to update logout time" });
-  }
-});
-
-// signin signup and signout user
-app.post("/signup", async function (request, response) {
-  let { name, email, password, role_radio } = request.body;
-
-  let userdb = await client
-    .db("LT")
-    .collection("Users")
-    .findOne({ email: email });
-  if (userdb) {
-    response.status(200).send({ msg: "User already present" });
-  } else {
-    const hashedPass = await hashedPassword(password);
-    const userToInsert = {
-      name: name,
-      email: email,
-      photoURL: "",
-      createdAt: new Date(),
-      createdAtDay: new Date().toLocaleDateString(undefined, {
-        timeZone: "Asia/Kolkata",
-      }),
-      createdAtTime: new Date().toLocaleTimeString(undefined, {
-        timeZone: "Asia/Kolkata",
-      }),
-      password: hashedPass,
-      role: role_radio,
-      holidays: [],
-      leaves: [],
-      attendance: [],
-    };
-
-    let result = await client
-      .db("LT")
-      .collection("Users")
-      .insertOne(userToInsert);
-    response.status(201).send({ msg: "User added" });
-  }
-});
-
-//service for sending emails using Nodemailer and Pug.
-
-
+// Nodemailer configuration
 const transporter = nodemailer.createTransport({
   host: "live.smtp.mailtrap.io",
   port: 587,
   auth: {
-    user: "api", 
-    pass: "ceb9400d790bf0179fc5a80dbad444d0"
+    user: "api",
+    pass: "ceb9400d790bf0179fc5a80dbad444d0",
   },
-  debug: true, // show debug output
-  logger: true // log information in console
+  debug: true,
+  logger: true,
 });
 
-const sendVerificationEmail =  async (to, email_verificationCode) => {
-  const templatePath = path.join(process.cwd(), 'email_verification.pug');
+const sendVerificationEmail = async (to, email_verificationCode) => {
+  const templatePath = path.join(process.cwd(), "email_verification.pug");
   const html = pug.renderFile(templatePath, { email_verificationCode });
 
   const mailOptions = {
     from: "mailtrap@demomailtrap.com",
-    to:to,
-    subject: 'Email Verification',
-    html: html,
-  }; 
- 
-  try { 
+    to,
+    subject: "Email Verification",
+    html,
+  };
+
+  try {
     await transporter.sendMail(mailOptions);
-    console.log('Verification email sent successfully');
+    console.log("Verification email sent successfully");
   } catch (error) {
-    console.error('Error sending email:', error);
+    console.error("Error sending email:", error);
   }
 };
 
+// Routes
+app.get("/cors", (req, res) => {
+  res.send("CORS policy is working!");
+});
 
+app.get("/", (req, res) => {
+  res.send("🙋‍♂️ Welcome to LT Backend");
+});
 
-app.post('/send-verification-code', async (req, res) => {
-  const { email } = req.body;
-  const email_verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+app.post("/signup", async (req, res) => {
+  const { name, email, password, role_radio } = req.body;
+  const userCollection = client.db("LT").collection("Users");
+
+  const existingUser = await userCollection.findOne({ email });
+  if (existingUser) {
+    return res.status(200).send({ msg: "User already present" });
+  }
+
+  const hashedPass = await hashedPassword(password);
+  const newUser = {
+    name,
+    email,
+    photoURL: "",
+    createdAt: new Date(),
+    createdAtDay: new Date().toLocaleDateString(undefined, {
+      timeZone: "Asia/Kolkata",
+    }),
+    createdAtTime: new Date().toLocaleTimeString(undefined, {
+      timeZone: "Asia/Kolkata",
+    }),
+    password: hashedPass,
+    role: role_radio,
+    holidays: [],
+    leaves: [],
+    attendance: [],
+  };
+
+  await userCollection.insertOne(newUser);
+  res.status(201).send({ msg: "User added" });
+});
+
+app.post("/signin", async (req, res) => {
+  const { email, password, login_location, loginDay, loginTime, login } =
+    req.body;
+  const userCollection = client.db("LT").collection("Users");
 
   try {
-    await client.db('LT').collection('Users').updateOne(
-      { email: email },
-      { $set: { email_verificationCode: email_verificationCode } },
-      { upsert: true }
-    );
+    const user = await userCollection.findOne({ email });
+    if (!user) {
+      return res.status(400).send({ msg: "No user found" });
+    }
 
-    await sendVerificationEmail(email, email_verificationCode);
-    res.status(200).send('Verification code sent');
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(400).send({ msg: "Invalid credentials" });
+    }
+
+    const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: "1h" });
+
+    const date = new Date();
+    const loginTime = date.toLocaleTimeString(undefined, {
+      timeZone: "Asia/Kolkata",
+    });
+    const loginDay = date.toLocaleDateString(undefined, {
+      timeZone: "Asia/Kolkata",
+    });
+
+    const userAttendance = await userCollection.findOne({
+      email,
+      "attendance.loginDay": loginDay,
+    });
+
+    if (!userAttendance) {
+      const newAttendance = {
+        loginDay,
+        loginTime,
+        login,
+        isLoggedIn: true,
+        login_location,
+        logoutTime: "yet to be logged out",
+        logoutDay: "yet to be logged out",
+        logout: "",
+        breaks: [],
+      };
+
+      await userCollection.updateOne(
+        { email },
+        { $push: { attendance: newAttendance } }
+      );
+
+      return res.status(200).send({
+        msg: "Logged in",
+        name: user.name,
+        role: user.role,
+        loginDay,
+        loginTime,
+        photoURL: user.photoURL,
+        token,
+        email,
+      });
+    }
+
+    res.status(200).send({ msg: "Cannot login more than once per day", email });
   } catch (error) {
-    res.status(500).send('Error sending verification code');
+    console.error("Error during signin:", error);
+    res.status(500).send({ msg: "Internal server error" });
   }
 });
 
-app.post('/verify-code', async (req, res) => {
+app.post("/signout", async (req, res) => {
+  const { email, login } = req.body;
+  const userCollection = client.db("LT").collection("Users");
+
+  try {
+    const user = await userCollection.findOne({
+      email,
+      "attendance.login": login,
+    });
+    if (!user) {
+      return res.status(404).send({ msg: "User not found" });
+    }
+
+    const date = new Date();
+    const logoutTime = date.toLocaleTimeString(undefined, {
+      timeZone: "Asia/Kolkata",
+    });
+    const logoutDay = date.toLocaleDateString(undefined, {
+      timeZone: "Asia/Kolkata",
+    });
+
+    const attendance = user.attendance[user.attendance.length - 1];
+    attendance.logout = date;
+    attendance.logoutTime = logoutTime;
+    attendance.logoutDay = logoutDay;
+    attendance.isLoggedIn = false;
+
+    await userCollection.updateOne(
+      { email, "attendance.login": login },
+      {
+        $set: {
+          "attendance.$.logout": date,
+          "attendance.$.logoutTime": logoutTime,
+          "attendance.$.logoutDay": logoutDay,
+          "attendance.$.isLoggedIn": false,
+        },
+      }
+    );
+
+    res.status(200).send({ msg: "Logout time recorded successfully" });
+  } catch (error) {
+    console.error("Error updating logout time:", error);
+    res.status(500).send({ msg: "Failed to update logout time" });
+  }
+});
+
+app.post("/send-verification-code", async (req, res) => {
+  const { email } = req.body;
+  const email_verificationCode = Math.floor(
+    100000 + Math.random() * 900000
+  ).toString();
+
+  try {
+    await client
+      .db("LT")
+      .collection("Users")
+      .updateOne(
+        { email },
+        { $set: { email_verificationCode } },
+        { upsert: true }
+      );
+
+    await sendVerificationEmail(email, email_verificationCode);
+    res.status(200).send("Verification code sent");
+  } catch (error) {
+    res.status(500).send("Error sending verification code");
+  }
+});
+
+app.post("/verify-code", async (req, res) => {
   const { email, email_verificationCode } = req.body;
 
   try {
-    const user = await client.db('LT').collection('Users').findOne({ email: email });
-
+    const user = await client.db("LT").collection("Users").findOne({ email });
     if (user && user.email_verificationCode === email_verificationCode) {
-      res.status(200).send('Email verified successfully');
+      res.status(200).send("Email verified successfully");
     } else {
-      res.status(400).send('Invalid verification code');
+      res.status(400).send("Invalid verification code");
     }
   } catch (error) {
-    res.status(500).send('Error verifying code');
+    res.status(500).send("Error verifying code");
   }
 });
 
-
-//update
-
-
-app.patch("/update-profile",cors(corsOptions), async (req, res) => {
+app.patch("/update-profile", cors(corsOptions), async (req, res) => {
   const { email, name, photoURL } = req.body;
+
   try {
-    const db = client.db("LT");
-    const collection = db.collection("Users");
-
-    const updateFields = {};
-     updateFields.name = name;
-     updateFields.photoURL = photoURL;
-
-     console.log(updateFields)
-
-    const result = await collection.updateOne(
-      { email },
-      { $set: updateFields }
-    );
-
-    console.log(result);
+    const updateFields = { name, photoURL };
+    const result = await client
+      .db("LT")
+      .collection("Users")
+      .updateOne({ email }, { $set: updateFields });
 
     if (result.modifiedCount === 0) {
-      return res
-        .status(200)
-        .send({ message: "No changes made" });
+      return res.status(200).send({ message: "No changes made" });
     }
 
     res.status(204).send({ message: "User profile updated successfully" });
-  } catch (err) {
-    res.status(500).send({ message: err.message });
+  } catch (error) {
+    res.status(500).send({ message: error.message });
   }
 });
 
-// post enquiry
+app.post("/enquiry", async (req, res) => {
+  const enquiryData = {
+    ...req.body,
+    touchHistory: [],
+    touchReminder: [],
+  };
 
-app.post("/enquiry", async function (request, response) {
-  let data = request.body;
-  let touchHistory = [];
-  let touchReminder = [];
-  let enquiryData = {...data, touchHistory, touchReminder}
-  let insert_data = await client
-    .db("LT")
-    .collection("Enquirys")
-    .insertOne(enquiryData);
-  if (insert_data) {
-    response.status(200).send({ msg: "Enquiry registered" });
-  } else {
-    response.status(400).send({ msg: "Some error happened" });
-  }
-});
-
-
-app.get("/allenquirys", async (request, response) => {
   try {
-    const enquirydb = await client
+    await client.db("LT").collection("Enquirys").insertOne(enquiryData);
+    res.status(200).send({ msg: "Enquiry registered" });
+  } catch (error) {
+    res.status(400).send({ msg: "Some error happened" });
+  }
+});
+
+app.get("/allenquirys", async (req, res) => {
+  try {
+    const enquiries = await client
       .db("LT")
       .collection("Enquirys")
       .find()
       .toArray();
-    if (enquirydb) {
-      response.status(200).send({ msg: "Enquiry found", enquirydb });
+    if (enquiries) {
+      res.status(200).send({ msg: "Enquiries found", enquiries });
     } else {
-      response.status(400).send({ msg: "No enquiry found" });
+      res.status(400).send({ msg: "No enquiries found" });
     }
   } catch (error) {
-    console.error("Error during enqyiry search:", error);
-    response.status(500).send({ msg: "Internal server error" });
+    console.error("Error during enquiry search:", error);
+    res.status(500).send({ msg: "Internal server error" });
   }
-}); 
+});
 
-app.get("/allusers", async (request, response) => {
+app.get("/allusers", async (req, res) => {
   try {
-    const usersdb = await client.db("LT").collection("Users").find().toArray();
-    if (usersdb) {
-      response.status(200).send({ msg: "Users found", users:usersdb });
+    const users = await client.db("LT").collection("Users").find().toArray();
+    if (users) {
+      res.status(200).send({ msg: "Users found", users });
     } else {
-      response.status(400).send({ msg: "No user found" });
+      res.status(400).send({ msg: "No users found" });
     }
   } catch (error) {
     console.error("Error during user search:", error);
-    response.status(500).send({ msg: "Internal server error" });
+    res.status(500).send({ msg: "Internal server error" });
   }
 });
 
-// for blog editor
+app.post("/editor/:id", async (req, res) => {
+  const { id } = req.params;
+  const { content } = req.body;
 
-app.post("/editor/:id", async function (request, response) {
   try {
-    const id = request.params.id;
-    const content = request.content;
-    let blogdb = await client.db("LT").collection("Drafts").findOne({ id });
-
-    if (blogdb) {
-      response
+    const draft = await client.db("LT").collection("Drafts").findOne({ id });
+    if (draft) {
+      return res
         .status(200)
-        .send({ msg: `Draft of ${id} already present`, blogdb });
-    } else {
-      let result = await client.db("LT").collection("Drafts").insertOne({
-        id,
-        content,
-      });
-      response.status(201).send({ msg: `Draft of ${id} added`, result });
+        .send({ msg: `Draft of ${id} already present`, draft });
     }
+
+    const result = await client
+      .db("LT")
+      .collection("Drafts")
+      .insertOne({ id, content });
+    res.status(201).send({ msg: `Draft of ${id} added`, result });
   } catch (error) {
-    response.status(500).send(error);
+    res.status(500).send({ msg: "Error adding draft", error });
   }
 });
 
-
-// send touch history to db
-
-app.post("/enquiry/touch", async function (request, response) {
-  let {email, type, comment,contact, touchedBy} = request.body;
-  let insert_data = await client
-    .db("LT")
-    .collection("Enquirys")
-    .updateMany({
-     email
-    },{
-      $push: {
-        touchHistory: {
-          type,
-          comment,
-          time: new Date(),
-          touchedBy: touchedBy || 'user'
-        }
-      }
-    });    
-    if (insert_data.acknowledged===true) {
-      const updatedUsers = await client.db('LT').collection('Enquirys').findOne({email});
-      response.status(204).send({data:updatedUsers});
-    } else {
-      response.status(404).send({ message: 'No enquirys found' });
-    }
-});
-
-// get touchHistory of a enquired user
-
-// GET route to fetch touchHistory by email
-app.get('/enquiry/touch-history', async (req, res) => {
-  const {email, contact} = req.query
+app.post("/enquiry/touch", async (req, res) => {
+  const { email, type, comment, contact, touchedBy } = req.body;
 
   try {
-    const user = await client.db('LT').collection('Enquirys').findOne({email});
+    const result = await client
+      .db("LT")
+      .collection("Enquirys")
+      .updateMany(
+        { email },
+        {
+          $push: {
+            touchHistory: {
+              type,
+              comment,
+              time: new Date(),
+              touchedBy: touchedBy || "user",
+            },
+          },
+        }
+      );
 
-    if (!user) {
-      return res.status(404).send({ message: 'User not found' });
+    if (result.acknowledged) {
+      const updatedEnquiry = await client
+        .db("LT")
+        .collection("Enquirys")
+        .findOne({ email });
+      res.status(204).send({ data: updatedEnquiry });
+    } else {
+      res.status(404).send({ msg: "No enquiries found" });
     }
-
-    // Extract touchHistory from user document
-    const touchHistory = user.touchHistory;
-
-    res.status(200).send({history:touchHistory});
   } catch (error) {
-    console.error('Error fetching touchHistory:', error);
-    res.status(500).send({ message: 'Internal server error' });
+    console.error("Error updating touch history:", error);
+    res.status(500).send({ msg: "Internal server error" });
   }
 });
 
+app.get("/enquiry/touch-history", async (req, res) => {
+  const { email } = req.query;
 
+  try {
+    const enquiry = await client
+      .db("LT")
+      .collection("Enquirys")
+      .findOne({ email });
 
+    if (!enquiry) {
+      return res.status(404).send({ msg: "User not found" });
+    }
 
+    res.status(200).send({ history: enquiry.touchHistory });
+  } catch (error) {
+    console.error("Error fetching touch history:", error);
+    res.status(500).send({ msg: "Internal server error" });
+  }
+});
 
-
-app.listen(PORT, () => console.log(`The server started in: ${PORT} ✨✨✨`));
+app.listen(PORT, () =>
+  console.log(`The server started on port: ${PORT} ✨✨✨`)
+);
