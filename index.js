@@ -20,6 +20,7 @@ const whitelist = [
   "https://learnmoretechnologies.netlify.app",
   "http://localhost:3030",
 ];
+
 const corsOptions = {
   origin: (origin, callback) => {
     if (whitelist.includes(origin)) {
